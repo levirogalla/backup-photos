@@ -21,10 +21,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Backup photos from Apple Photos export directory to backup directory
+    /// Backup photos and videos from Apple Photos export directory to backup directory
     Backup,
     
-    /// Import photos from export directory to Immich
+    /// Import photos and videos from export directory to Immich
     Import,
     
     /// Clear the export directory
@@ -34,7 +34,7 @@ enum Commands {
         force: bool,
     },
     
-    /// Compare files between backup directory and Immich library
+    /// Compare media files between backup directory and Immich library
     Compare,
     
     /// Run the full backup workflow (backup -> import -> compare)

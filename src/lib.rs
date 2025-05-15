@@ -24,7 +24,7 @@ pub enum BackupError {
     #[error("Command failed: {0}")]
     CommandFailed(String),
 
-    #[error("No photos found in export directory")]
+    #[error("No media files found in export directory")]
     NoPhotosFound,
 
     #[error("I/O error: {0}")]
@@ -129,14 +129,15 @@ pub fn count_files_with_extensions(path: &Path, extensions: &[&str]) -> Result<u
     Ok(count)
 }
 
-/// Backup photos from export directory to backup directory
+/// Backup photos and videos from export directory to backup directory
 pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
     let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
     let backup_dir = get_path_from_env("RAW_PHOTOS_BACKUP_DIR")?;
     
     let photo_extensions = ["jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef"];
+    let video_extensions = ["mp4", "mov", "avi", "m4v", "3gp", "mkv", "webm", "flv", "wmv", "mts", "m2ts"];
     let metadata_extensions = ["xmp"];
-    let all_extensions = [&photo_extensions[..], &metadata_extensions[..]].concat();
+    let all_extensions = [&photo_extensions[..], &video_extensions[..], &metadata_extensions[..]].concat();
     
     // Count files to process
     let file_count = count_files_with_extensions(&export_dir, &all_extensions)?;
@@ -145,7 +146,7 @@ pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
         return Err(BackupError::NoPhotosFound);
     }
     
-    info!("Found {} files to backup", file_count);
+    info!("Found {} photos/videos and metadata files to backup", file_count);
     
     // Create progress bar
     let progress = ProgressBar::new(file_count as u64);
@@ -176,31 +177,34 @@ pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
         return Err(BackupError::CommandFailed(stderr.to_string()));
     }
     
-    info!("Successfully backed up photos to raw directory");
+    info!("Successfully backed up photos and videos to raw directory");
     debug!("{}", String::from_utf8_lossy(&output.stdout));
     
     Ok(())
 }
 
-/// Import photos to Immich using the Immich CLI
+/// Import photos and videos to Immich using the Immich CLI
 pub fn import_to_immich() -> Result<(), BackupError> {
     let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
     let immich_lib = get_path_from_env("IMMICH_LIB")?;
     
-    // Import photos to Immich
+    // Import photos and videos to Immich
     // You'll need to modify this section based on your specific Immich CLI commands
-    info!("Importing photos to Immich from {} to {}", export_dir.display(), immich_lib.display());
+    info!("Importing media to Immich from {} to {}", export_dir.display(), immich_lib.display());
     
-    // Count the images to be imported
+    // Count the media files to be imported
     let photo_extensions = ["jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef"];
-    let file_count = count_files_with_extensions(&export_dir, &photo_extensions)?;
+    let video_extensions = ["mp4", "mov", "avi", "m4v", "3gp", "mkv", "webm", "flv", "wmv", "mts", "m2ts"];
+    let all_media_extensions = [&photo_extensions[..], &video_extensions[..]].concat();
+    
+    let file_count = count_files_with_extensions(&export_dir, &all_media_extensions)?;
     
     if file_count == 0 {
-        warn!("No photos found in export directory for import to Immich");
+        warn!("No photos or videos found in export directory for import to Immich");
         return Ok(());
     }
     
-    info!("Found {} photos to import to Immich", file_count);
+    info!("Found {} photos and videos to import to Immich", file_count);
     
     // PLACEHOLDER: Replace this with your actual Immich CLI command
     // This is an example - modify according to your Immich CLI documentation
@@ -237,13 +241,14 @@ pub fn clear_export_directory() -> Result<(), BackupError> {
     let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
     
     let photo_extensions = ["jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef"];
+    let video_extensions = ["mp4", "mov", "avi", "m4v", "3gp", "mkv", "webm", "flv", "wmv", "mts", "m2ts"];
     let metadata_extensions = ["xmp"];
-    let all_extensions = [&photo_extensions[..], &metadata_extensions[..]].concat();
+    let all_extensions = [&photo_extensions[..], &video_extensions[..], &metadata_extensions[..]].concat();
     
     let file_count = count_files_with_extensions(&export_dir, &all_extensions)?;
     
     if file_count == 0 {
-        info!("No photos found in export directory");
+        info!("No media files found in export directory");
         return Ok(());
     }
     
@@ -259,8 +264,9 @@ pub fn clear_export_directory_force() -> Result<(), BackupError> {
     let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
     
     let photo_extensions = ["jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef"];
+    let video_extensions = ["mp4", "mov", "avi", "m4v", "3gp", "mkv", "webm", "flv", "wmv", "mts", "m2ts"];
     let metadata_extensions = ["xmp"];
-    let all_extensions = [&photo_extensions[..], &metadata_extensions[..]].concat();
+    let all_extensions = [&photo_extensions[..], &video_extensions[..], &metadata_extensions[..]].concat();
     
     let mut deleted_count = 0;
     
@@ -272,7 +278,7 @@ pub fn clear_export_directory_force() -> Result<(), BackupError> {
         if entry.file_type().is_file() {
             if let Some(ext) = entry.path().extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();
-                if all_extensions.iter().any(|&e| e == ext_str) {
+                if all_extensions.iter().any(|e| *e == ext_str) {
                     fs::remove_file(entry.path())?;
                     deleted_count += 1;
                 }
@@ -289,11 +295,12 @@ pub fn clear_export_directory_force() -> Result<(), BackupError> {
 pub fn compare_backup_to_immich() -> Result<(), BackupError> {
     let backup_dir = get_path_from_env("RAW_PHOTOS_BACKUP_DIR")?;
     let immich_lib = get_path_from_env("IMMICH_LIB")?;
-    
-    // Get all image files from backup directory
+     // Get all media files from backup directory
     let mut backup_files = Vec::new();
     let photo_extensions = ["jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef"];
-    
+    let video_extensions = ["mp4", "mov", "avi", "m4v", "3gp", "mkv", "webm", "flv", "wmv", "mts", "m2ts"];
+    let all_media_extensions = [&photo_extensions[..], &video_extensions[..]].concat();
+
     for entry in WalkDir::new(&backup_dir)
         .follow_links(true)
         .into_iter()
@@ -302,7 +309,7 @@ pub fn compare_backup_to_immich() -> Result<(), BackupError> {
         if entry.file_type().is_file() {
             if let Some(ext) = entry.path().extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();
-                if photo_extensions.iter().any(|&e| e == ext_str) {
+                if all_media_extensions.iter().any(|e| *e == ext_str) {
                     backup_files.push(entry.path().to_path_buf());
                 }
             }
@@ -311,7 +318,7 @@ pub fn compare_backup_to_immich() -> Result<(), BackupError> {
     
     info!("Found {} files in backup directory", backup_files.len());
     
-    // Find all image files in Immich library (recursively search through the nested directory structure)
+    // Find all media files in Immich library (recursively search through the nested directory structure)
     let upload_dir = immich_lib.join("upload");
     let mut immich_files = Vec::new();
     
@@ -323,16 +330,16 @@ pub fn compare_backup_to_immich() -> Result<(), BackupError> {
         if entry.file_type().is_file() {
             if let Some(ext) = entry.path().extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();
-                if photo_extensions.iter().any(|&e| e == ext_str) {
+                if all_media_extensions.iter().any(|e| *e == ext_str) {
                     immich_files.push(entry.path().to_path_buf());
                 }
             }
         }
     }
     
-    info!("Found {} files in Immich library", immich_files.len());
+    info!("Found {} media files in Immich library", immich_files.len());
     
-    // Compare files by content (this might be slow for large libraries)
+    // Compare media files by name (this might be slow for large libraries)
     let mut files_not_in_immich = Vec::new();
     let progress = ProgressBar::new(backup_files.len() as u64);
     match progress.set_style(
@@ -363,9 +370,9 @@ pub fn compare_backup_to_immich() -> Result<(), BackupError> {
     progress.finish_with_message("Comparison completed");
     
     if files_not_in_immich.is_empty() {
-        info!("All backup files are present in Immich library");
+        info!("All media files from backup are present in Immich library");
     } else {
-        warn!("{} files from backup are not in Immich library:", files_not_in_immich.len());
+        warn!("{} media files from backup are not in Immich library:", files_not_in_immich.len());
         for file in files_not_in_immich.iter().take(10) {
             warn!("  - {}", file.display());
         }

@@ -1,6 +1,6 @@
 # Backup Photos
 
-A CLI tool for backing up photos from Apple Photos to external storage and managing them with Immich.
+A CLI tool for backing up photos and videos from Apple Photos to external storage and managing them with Immich.
 
 ## Prerequisites
 
@@ -35,17 +35,17 @@ Verify that all environment variable paths are correctly set and accessible:
 backup-photos check-paths
 ```
 
-### Backup Photos
+### Backup Photos and Videos
 
-Copy photos from the export directory to the backup directory:
+Copy photos and videos from the export directory to the backup directory:
 
 ```bash
 backup-photos backup
 ```
 
-### Import Photos to Immich
+### Import Media to Immich
 
-Import photos from the export directory to Immich:
+Import photos and videos from the export directory to Immich:
 
 ```bash
 backup-photos import
@@ -67,7 +67,7 @@ Clear the export directory (shows a summary without deleting):
 backup-photos clear
 ```
 
-Force delete all photos in the export directory:
+Force delete all photos and videos in the export directory:
 
 ```bash
 backup-photos clear --force
@@ -98,10 +98,10 @@ backup-photos --debug backup
 
 ## Workflow
 
-1. Export photos from Apple Photos to the configured export directory
+1. Export photos and videos from Apple Photos to the configured export directory
 2. Run `backup-photos full` to:
-   - Backup photos to the backup directory
-   - Import photos to Immich
+   - Backup photos and videos to the backup directory
+   - Import media to Immich
    - Compare files to ensure everything was properly imported
 3. Run `backup-photos clear --force` to clear the export directory after verifying the backup
 
