@@ -27,6 +27,16 @@ cargo build --release
 
 The CLI provides several commands to manage your photo backup workflow.
 
+### Initialize Directories
+
+Create all required directories specified in the .env file:
+
+```bash
+backup-photos init
+```
+
+This will create the export, backup, and Immich library directories if they don't exist.
+
 ### Check Paths
 
 Verify that all environment variable paths are correctly set and accessible:
@@ -58,6 +68,41 @@ Compare the files between the backup directory and the Immich library:
 ```bash
 backup-photos compare
 ```
+
+### Sync Backup with Immich
+
+Interactively handle files that are in backup but missing from Immich:
+
+```bash
+backup-photos sync
+```
+
+This command allows you to:
+- View file information and metadata
+- View files with their default applications
+- Open directories containing the files
+- Move files to trash if they're no longer needed
+- Keep files in backup if they should be preserved
+- Select multiple files for batch processing
+- Filter files by type (photos only, videos only)
+- Filter files by filename pattern
+- Apply actions to all remaining or filtered files
+
+The sync command provides an interactive interface with these options:
+- `[t]` Move to trash (safely copy to ~/.Trash and delete original)
+- `[k]` Keep in backup (skip this file)
+- `[v]` View file info and optionally open the file
+- `[d]` Open directory containing the file
+- `[s]` Select multiple files for batch processing
+- `[f]` Apply filter to remaining files
+- `[q]` Quit sync process
+- `[a]` Process all remaining files with the same action
+
+Advanced features:
+- Batch selection mode allows you to quickly mark multiple files and process them together
+- Filtering options let you narrow down the files by photos, videos, or custom patterns
+- File collision detection ensures files with the same name don't overwrite each other in trash
+- Full error handling for file operations ensures data safety
 
 ### Clear Export Directory
 

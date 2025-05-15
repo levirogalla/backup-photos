@@ -21,13 +21,20 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize required directories based on environment variables
+    /// Creates export, backup, and Immich directories if they don't exist
+    Init,
+    
     /// Backup photos and videos from Apple Photos export directory to backup directory
+    /// using rsync to avoid duplicates and preserve metadata
     Backup,
     
     /// Import photos and videos from export directory to Immich
+    /// using the Immich CLI
     Import,
     
-    /// Clear the export directory
+    /// Clear the export directory after successful backup
+    /// Without --force, this only shows what would be deleted
     Clear {
         /// Force deletion without additional prompts
         #[arg(short, long)]
@@ -35,12 +42,20 @@ enum Commands {
     },
     
     /// Compare media files between backup directory and Immich library
+    /// Reports any discrepancies found
     Compare,
     
+    /// Sync backup with Immich by interactively handling discrepancies
+    /// Provides options to view, filter, batch select, and process files
+    /// that are in backup but missing from Immich
+    Sync,
+    
     /// Run the full backup workflow (backup -> import -> compare)
+    /// in a single command
     Full,
     
-    /// Check environment variable paths
+    /// Check environment variable paths for existence and accessibility
+    /// Verifies that external drives are connected if paths point to them
     CheckPaths,
 }
 
@@ -72,6 +87,17 @@ fn main() -> Result<()> {
     
     // Execute the appropriate command
     match &cli.command {
+        Commands::Init => {
+            info!("Initializing required directories");
+            match init_directories() {
+                Ok(_) => info!("Directories initialized successfully"),
+                Err(e) => {
+                    error!("Failed to initialize directories: {}", e);
+                    return Err(e.into());
+                }
+            }
+        },
+        
         Commands::Backup => {
             info!("Running backup command");
             match backup_photos_to_raw_dir() {
@@ -121,6 +147,17 @@ fn main() -> Result<()> {
                 Ok(_) => info!("Comparison completed successfully"),
                 Err(e) => {
                     error!("Comparison failed: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+        
+        Commands::Sync => {
+            info!("Running sync command");
+            match sync_backup_with_immich() {
+                Ok(_) => info!("Sync completed successfully"),
+                Err(e) => {
+                    error!("Sync failed: {}", e);
                     return Err(e.into());
                 }
             }
