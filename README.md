@@ -6,7 +6,9 @@ A CLI tool for backing up photos and videos from Apple Photos to external storag
 
 - Rust (1.53 or later)
 - rsync
-- Immich CLI (for importing to Immich)
+- immich
+- immich-go
+- exiftool
 
 ## Setup
 

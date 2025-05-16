@@ -5,11 +5,13 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use thiserror::Error;
 use walkdir::WalkDir;
+use std::io;
 
 pub mod constants;
+pub mod api_key;
 
 #[derive(Error, Debug)]
 pub enum BackupError {
@@ -172,6 +174,70 @@ pub fn count_files_with_extensions(path: &Path, extensions: &[&str]) -> Result<u
     Ok(count)
 }
 
+/// Fix XMP apple xmp files
+/// Fixes XMP files exported by Apple Photos using exiftool.
+/// This repairs GPS and EXIF tags in all .xmp files in the given directory.
+/// Shows a progress bar for the number of XMP files processed.
+pub fn fix_apple_xmp_files(dir: &Path) -> Result<(), BackupError> {
+    // Count XMP files for progress bar
+    let mut xmp_count = 0;
+    for entry in WalkDir::new(dir)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_file() {
+            if let Some(ext) = entry.path().extension() {
+                if ext.to_string_lossy().eq_ignore_ascii_case("xmp") {
+                    xmp_count += 1;
+                }
+            }
+        }
+    }
+
+    if xmp_count == 0 {
+        info!("No XMP files found in {}", dir.display());
+        return Ok(());
+    }
+
+    info!("Found {} XMP files to repair in {}", xmp_count, dir.display());
+
+
+    // exiftool will process all .xmp files in the directory recursively
+    let status = Command::new("exiftool")
+        .args([
+            "-P",
+            "-overwrite_original",
+            "-ext", "xmp",
+            "-XMP-exif:All=",
+            "-tagsFromFile", "@",
+            "-XMP-exif:All",
+            "-XMP-exif:GPSLongitude<${XMP-exif:GPSLongitude#}${XMP-exif:GPSLongitudeRef#}",
+            "-XMP-exif:GPSLatitude<${XMP-exif:GPSLatitude#}${XMP-exif:GPSLatitudeRef#}",
+            dir.to_string_lossy().as_ref(),
+        ])
+        .current_dir(dir)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .and_then(|mut child| {
+            // Optionally, parse exiftool output for progress (not always possible)
+            // Here, just wait for completion and update bar at the end
+            let status = child.wait()?;
+            Ok(status)
+        })
+        .map_err(|e| BackupError::CommandFailed(format!("Failed to run exiftool: {}", e)))?;
+
+    if !status.success() {
+        return Err(BackupError::CommandFailed(format!(
+            "exiftool exited with status: {}",
+            status
+        )));
+    }
+
+    Ok(())
+}
+
 /// Backup photos and videos from export directory to backup directory
 pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
     let export_dir = PathBuf::from(constants::APPLE_PHOTOS_EXPORT_DIR);
@@ -239,38 +305,30 @@ pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
         backup_dir.display()
     );
 
-    // Fix the rsync command to use the directory directly rather than glob pattern
-    let output = Command::new("rsync")
+     let mut child = Command::new("rsync")
         .args([
             "-av", // archive mode, verbose
-            "--progress",
-            "--ignore-existing", // Don't overwrite existing files
-            // Use trailing slash for directory contents
-            &format!("{}/", export_dir.display()), // Source
-            &format!("{}/", backup_dir.display()), // Destination
+            "--progress", // show live progress
+            "--ignore-existing", // skip files already in destination
+            &format!("{}/", export_dir.display()), // source dir contents
+            &format!("{}/", backup_dir.display()), // destination dir
         ])
-        .output()?;
+        .stdout(Stdio::inherit()) // stream stdout to terminal
+        .stderr(Stdio::inherit()) // stream stderr to terminal
+        .spawn()
+        .map_err(|e| BackupError::IoError(io::Error::new(io::ErrorKind::Other, format!("Failed to spawn rsync: {e}"))))?;
+
+    let status = child
+        .wait()
+        .map_err(|e| BackupError::IoError(io::Error::new(io::ErrorKind::Other, format!("Failed to wait on rsync: {e}"))))?;
 
     progress.finish_with_message("Backup completed");
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        debug!("rsync stdout: {}", stdout);
-        debug!("rsync stderr: {}", stderr);
-        return Err(BackupError::CommandFailed(stderr.to_string()));
+    if !status.success() {
+        return Err(BackupError::CommandFailed(format!("rsync exited with status: {}", status)));
     }
 
-    // Process the output to check if any files were copied
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    debug!("rsync output: {}", stdout);
-
-    // Look for "Number of files transferred" in rsync output
-    if stdout.contains("Number of files transferred: 0") {
-        info!("No new files to backup - all files already exist in backup directory");
-    } else {
-        info!("Successfully backed up photos and videos to raw directory");
-    }
+    info!("Successfully backed up photos and videos to raw directory");
 
     Ok(())
 }
@@ -279,6 +337,9 @@ pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
 pub fn import_to_immich() -> Result<(), BackupError> {
     let export_dir = PathBuf::from(constants::APPLE_PHOTOS_EXPORT_DIR);
     let immich_lib = PathBuf::from(constants::IMMICH_LIB);
+
+    info!("Reparing XMP to import photos and videos to Immich");
+    fix_apple_xmp_files(&export_dir)?;
 
     // Import photos and videos to Immich
     // You'll need to modify this section based on your specific Immich CLI commands
@@ -306,10 +367,12 @@ pub fn import_to_immich() -> Result<(), BackupError> {
 
     info!("Found {} photos and videos to import to Immich", file_count);
 
-    let output = Command::new("immich")
-        .args([
+    let output = Command::new("immich-go")
+    .args([
+            "-k", &api_key::API_KEY,
+            "--server", &constants::IMMICH_SERVER,
             "upload",
-            "-r",
+            "from-folder",
             constants::APPLE_PHOTOS_EXPORT_DIR,
         ])
         .output()?;

@@ -58,6 +58,9 @@ enum Commands {
     /// Check environment variable paths for existence and accessibility
     /// Verifies that external drives are connected if paths point to them
     CheckPaths,
+
+    /// Repair Apple XMP export files in export directory
+    RepairXMP,
 }
 
 fn main() -> Result<()> {
@@ -202,6 +205,18 @@ fn main() -> Result<()> {
                             Err(e) => println!("❌ {}", e),
                         }
                     }
+        }
+    
+
+        Commands::RepairXMP => {
+            info!("Running repair command");
+            match fix_apple_xmp_files(&PathBuf::from(constants::APPLE_PHOTOS_EXPORT_DIR)) {
+                Ok(_) => info!("Repair completed successfully"),
+                Err(e) => {
+                    error!("Repair failed: {}", e);
+                    return Err(e.into());
+                }
+            }
         }
     }
     
