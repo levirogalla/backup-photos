@@ -6,6 +6,7 @@ use env_logger::Env;
 use log::{error, info};
 use std::io::{self, Write};
 use std::path::PathBuf;
+use constants;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -177,14 +178,13 @@ fn main() -> Result<()> {
         Commands::CheckPaths => {
             info!("Checking environment variable paths");
             let paths = [
-                ("APPLE_PHOTOS_EXPORT_DIR", "Photos export directory"),
-                ("RAW_PHOTOS_BACKUP_DIR", "Raw photos backup directory"),
-                ("IMMICH_LIB", "Immich library directory"),
+                (constants::APPLE_PHOTOS_EXPORT_DIR, "Photos export directory"),
+                (constants::RAW_PHOTOS_BACKUP_DIR, "Raw photos backup directory"),
+                (constants::IMMICH_LIB, "Immich library directory"),
             ];
             
             for (var, desc) in paths.iter() {
-                match std::env::var(var) {
-                    Ok(path) => {
+                let path = var;
                         let path_buf = PathBuf::from(path);
                         print!("{}: {} - ", desc, path_buf.display());
                         io::stdout().flush()?;
@@ -202,9 +202,6 @@ fn main() -> Result<()> {
                             Err(e) => println!("❌ {}", e),
                         }
                     }
-                    Err(_) => println!("{}: ❌ environment variable not set", desc),
-                }
-            }
         }
     }
     

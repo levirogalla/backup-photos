@@ -1,13 +1,15 @@
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info, warn};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use thiserror::Error;
 use walkdir::WalkDir;
+
+pub mod constants;
 
 #[derive(Error, Debug)]
 pub enum BackupError {
@@ -106,41 +108,34 @@ pub fn check_external_drive_connected(path: &Path) -> Result<(), BackupError> {
 /// Initialize the required directories from environment variables
 pub fn init_directories() -> Result<(), BackupError> {
     let vars = [
-        "APPLE_PHOTOS_EXPORT_DIR",
-        "RAW_PHOTOS_BACKUP_DIR",
-        "IMMICH_LIB",
+        constants::APPLE_PHOTOS_EXPORT_DIR,
+        constants::RAW_PHOTOS_BACKUP_DIR,
+        constants::IMMICH_LIB,
     ];
 
     for var in vars {
-        match std::env::var(var) {
-            Ok(path_str) => {
-                let path = PathBuf::from(&path_str);
+        let path = PathBuf::from(&var);
 
-                // Check if directory already exists
-                if path.exists() {
-                    info!("Directory for {} already exists at {}", var, path.display());
-                    continue;
-                }
+        // Check if directory already exists
+        if path.exists() {
+            info!("Directory for {} already exists at {}", var, path.display());
+            continue;
+        }
 
-                // Check if it's on an external drive (might not be plugged in)
-                if path_str.starts_with("/Volumes") {
-                    warn!("Path {} points to an external drive. Make sure the drive is connected before continuing.", path.display());
-                }
+        // Check if it's on an external drive (might not be plugged in)
+        if var.starts_with("/Volumes") {
+            warn!("Path {} points to an external drive. Make sure the drive is connected before continuing.", path.display());
+        }
 
-                // Create the directory
-                info!("Creating directory for {} at {}", var, path.display());
-                match fs::create_dir_all(&path) {
-                    Ok(_) => info!("Successfully created directory {}", path.display()),
-                    Err(e) => {
-                        return Err(BackupError::IoError(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to create directory {}: {}", path.display(), e),
-                        )));
-                    }
-                }
-            }
-            Err(_) => {
-                return Err(BackupError::EnvVarNotFound(var.to_string()));
+        // Create the directory
+        info!("Creating directory for {} at {}", var, path.display());
+        match fs::create_dir_all(&path) {
+            Ok(_) => info!("Successfully created directory {}", path.display()),
+            Err(e) => {
+                return Err(BackupError::IoError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to create directory {}: {}", path.display(), e),
+                )));
             }
         }
     }
@@ -154,27 +149,6 @@ pub fn init_directories() -> Result<(), BackupError> {
     Ok(())
 }
 
-/// Get the path from the environment variable
-pub fn get_path_from_env(env_var: &str) -> Result<PathBuf, BackupError> {
-    let path_str =
-        std::env::var(env_var).map_err(|_| BackupError::EnvVarNotFound(env_var.to_string()))?;
-
-    let path = PathBuf::from(path_str);
-
-    // For paths that don't exist yet, provide more helpful message
-    if !path.exists() {
-        return Err(BackupError::DirectoryNotFound(format!(
-            "Directory '{}' from {} environment variable does not exist. Try running 'backup-photos init' to create required directories.",
-            path.display(),
-            env_var
-        )));
-    }
-
-    check_directory_exists_and_accessible(&path)?;
-    check_external_drive_connected(&path)?;
-
-    Ok(path)
-}
 
 /// Count files in a directory that match the given extensions
 pub fn count_files_with_extensions(path: &Path, extensions: &[&str]) -> Result<usize, BackupError> {
@@ -200,8 +174,8 @@ pub fn count_files_with_extensions(path: &Path, extensions: &[&str]) -> Result<u
 
 /// Backup photos and videos from export directory to backup directory
 pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
-    let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
-    let backup_dir = get_path_from_env("RAW_PHOTOS_BACKUP_DIR")?;
+    let export_dir = PathBuf::from(constants::APPLE_PHOTOS_EXPORT_DIR);
+    let backup_dir = PathBuf::from(constants::RAW_PHOTOS_BACKUP_DIR);
 
     let photo_extensions = [
         "jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef",
@@ -303,8 +277,8 @@ pub fn backup_photos_to_raw_dir() -> Result<(), BackupError> {
 
 /// Import photos and videos to Immich using the Immich CLI
 pub fn import_to_immich() -> Result<(), BackupError> {
-    let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
-    let immich_lib = get_path_from_env("IMMICH_LIB")?;
+    let export_dir = PathBuf::from(constants::APPLE_PHOTOS_EXPORT_DIR);
+    let immich_lib = PathBuf::from(constants::IMMICH_LIB);
 
     // Import photos and videos to Immich
     // You'll need to modify this section based on your specific Immich CLI commands
@@ -336,9 +310,7 @@ pub fn import_to_immich() -> Result<(), BackupError> {
         .args([
             "upload",
             "-r",
-            get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?
-                .to_str()
-                .unwrap(),
+            constants::APPLE_PHOTOS_EXPORT_DIR,
         ])
         .output()?;
     info!(
@@ -356,7 +328,7 @@ pub fn import_to_immich() -> Result<(), BackupError> {
 
 /// Clear the export directory
 pub fn clear_export_directory() -> Result<(), BackupError> {
-    let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
+    let export_dir = PathBuf::from(constants::APPLE_PHOTOS_EXPORT_DIR);
 
     let photo_extensions = [
         "jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef",
@@ -388,7 +360,7 @@ pub fn clear_export_directory() -> Result<(), BackupError> {
 
 /// Clear the export directory with force option
 pub fn clear_export_directory_force() -> Result<(), BackupError> {
-    let export_dir = get_path_from_env("APPLE_PHOTOS_EXPORT_DIR")?;
+    let export_dir = PathBuf::from(constants::APPLE_PHOTOS_EXPORT_DIR);
 
     let photo_extensions = [
         "jpg", "jpeg", "png", "heic", "dng", "raw", "arw", "cr2", "nef",
@@ -461,8 +433,8 @@ fn calculate_file_hash(path: &Path) -> Result<String, BackupError> {
 
 /// Find files in backup directory that are not in Immich library using content hashing
 pub fn find_files_not_in_immich() -> Result<Vec<PathBuf>, BackupError> {
-    let backup_dir = get_path_from_env("RAW_PHOTOS_BACKUP_DIR")?;
-    let immich_lib = get_path_from_env("IMMICH_LIB")?;
+    let backup_dir = PathBuf::from(constants::RAW_PHOTOS_BACKUP_DIR);
+    let immich_lib = PathBuf::from(constants::IMMICH_LIB);
 
     // Get all media files from backup directory (explicitly excluding XMP files)
     let mut backup_files = Vec::new();
@@ -489,7 +461,10 @@ pub fn find_files_not_in_immich() -> Result<Vec<PathBuf>, BackupError> {
         }
     }
 
-    info!("Found {} media files in backup directory", backup_files.len());
+    info!(
+        "Found {} media files in backup directory",
+        backup_files.len()
+    );
 
     // Find all media files in Immich library
     let upload_dir = immich_lib.join("upload");
@@ -564,7 +539,11 @@ pub fn find_files_not_in_immich() -> Result<Vec<PathBuf>, BackupError> {
                 }
             }
             Err(e) => {
-                warn!("Failed to hash backup file {}: {}", backup_file.display(), e);
+                warn!(
+                    "Failed to hash backup file {}: {}",
+                    backup_file.display(),
+                    e
+                );
                 // Add file to not found list since we couldn't verify it
                 files_not_in_immich.push(backup_file.clone());
             }
