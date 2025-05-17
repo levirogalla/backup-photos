@@ -1331,3 +1331,25 @@ pub fn sync_backup_with_immich() -> Result<(), BackupError> {
 
     Ok(())
 }
+
+/// Start the immich server with docker compose
+pub fn start_immich_server() -> Result<(), BackupError> {
+    info!("Starting Immich server with Docker Compose...");
+
+    let output = Command::new("docker compose")
+        .arg("-f")
+        .arg(constants::IMMICH_DOCKER_COMPOSE)
+        .arg("up")
+        .arg("-d")
+        .output()
+        .map_err(|e| BackupError::CommandFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(BackupError::CommandFailed(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+
+    info!("Immich server started successfully");
+    Ok(())
+}

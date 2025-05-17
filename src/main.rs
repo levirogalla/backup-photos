@@ -61,6 +61,10 @@ enum Commands {
 
     /// Repair Apple XMP export files in export directory
     RepairXMP,
+
+    /// Start the docker server for immich
+    StartServer
+    
 }
 
 fn main() -> Result<()> {
@@ -214,6 +218,17 @@ fn main() -> Result<()> {
                 Ok(_) => info!("Repair completed successfully"),
                 Err(e) => {
                     error!("Repair failed: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+
+        Commands::StartServer => {
+            info!("Starting Immich server");
+            match start_immich_server() {
+                Ok(_) => info!("Immich server started successfully"),
+                Err(e) => {
+                    error!("Failed to start Immich server: {}", e);
                     return Err(e.into());
                 }
             }
