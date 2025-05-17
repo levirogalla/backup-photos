@@ -63,7 +63,10 @@ enum Commands {
     RepairXMP,
 
     /// Start the docker server for immich
-    StartServer
+    StartServer,
+
+    /// Stop the docker server for immich
+    StopServer,
     
 }
 
@@ -229,6 +232,17 @@ fn main() -> Result<()> {
                 Ok(_) => info!("Immich server started successfully"),
                 Err(e) => {
                     error!("Failed to start Immich server: {}", e);
+                    return Err(e.into());
+                }
+            }
+        }
+
+        Commands::StopServer => {
+            info!("Stopping Immich server");
+            match stop_immich_server() {
+                Ok(_) => info!("Immich server stopped successfully"),
+                Err(e) => {
+                    error!("Failed to stop Immich server: {}", e);
                     return Err(e.into());
                 }
             }
